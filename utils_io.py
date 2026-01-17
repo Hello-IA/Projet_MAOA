@@ -215,6 +215,8 @@ if __name__ == "__main__":
         "./data/a280_n1395_uncorr-similar-weights_05.ttp",
     ], populate=True, db=db)
     
+    print(problem.coords[:5])
+    
     print(f"\nLoaded {len(problems)} problems")
     print("\nDatabase contents:")
     print(db)

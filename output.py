@@ -3,7 +3,7 @@
 # repects the W constraint
 
 import numpy as np
-import copy
+import copy  
 from typing import List, Dict, Set, Tuple, Optional
 
 
@@ -56,7 +56,7 @@ class TWDTSPSolution:
         """
         Check if the solution respects the weight constraint W
         """
-        if self.total_profit <= self.W:
+        if self.total_weight <= self.W:
             return self
         return None
     
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     max_weight = 100.0
     
     # Create solution
-    solution = TWDTSPSolution(tour, packing_plan, max_weight)
+    solution = TWDTSPSolution(tour, packing_plan, 500, 98, max_weight)
     print(solution)
     print(f"\nItems collected: {solution.get_collected_items()}")
     
@@ -145,18 +145,18 @@ if __name__ == "__main__":
         3: np.array([[20.0, 10.0], [18.0, 9.0]])               # 2 items at city 3
     }
     
-    print(f"\nTotal weight: {solution.total_weight(items):.2f}")
-    print(f"Total profit: {solution.total_profit(items):.2f}")
-    print(f"Is feasible: {solution.is_feasible(items)}")
+    print(f"\nTotal weight: {solution.total_weight:.2f}")
+    print(f"Total profit: {solution.total_profit:.2f}")
+    print(f"Is feasible: {solution.is_feasible()}")
     
     # Modify solution
-    solution.add_item(2, 0)  # Add item 0 from city 2
+    solution.add_item(2, 0, 5, 3)  # Add item 0 from city 2
     print(f"\nAfter adding item:")
-    print(f"Total weight: {solution.total_weight(items):.2f}")
-    print(f"Total profit: {solution.total_profit(items):.2f}")
+    print(f"Total weight: {solution.total_weight:.2f}")
+    print(f"Total profit: {solution.total_profit:.2f}")
     
     # Create a copy
-    solution_copy = solution.copy()
+    solution_copy = copy.deepcopy(solution)
     solution_copy.remove_item(1, 0)
     print(f"\nCopied solution after removing item:")
     print(f"Items in copy: {solution_copy.num_items_collected()}")
