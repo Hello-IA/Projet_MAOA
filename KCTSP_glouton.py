@@ -2,26 +2,8 @@ from utils_io import TWDTSPLoader
 from instance import KCTSPProblem
 import pandas as pd
 import numpy as np
-
-db = pd.DataFrame(columns=[
-        'problem_name', 'min_speed', 'max_speed', 'renting_ratio',
-        'knapsack_data_type', 'dimension', 'num_items', 'max_weight', 'edge_weight_type'
-    ])
-    
-# Load a single file without populating database
-problem_tw = TWDTSPLoader.load_from_file("./data/a280_n279_bounded-strongly-corr_01.ttp")
-
-kw = 0.01  # coût par km et par kg (à choisir)
-problem_kc = problem_tw.as_kctsp(weight_cost_per_km=kw)
-
-n = problem_kc.n
-D = np.zeros((n, n))
-
-for i in range(1, n + 1):
-    for j in range(1, n + 1):
-        D[i-1, j-1] = problem_kc.distance(i, j)
-
-print(D.shape)
+import time
+from KCTSP import solve_kctsp_knapsack_exact
 
 
 def NearestNeighbor(D, start=0):
@@ -59,24 +41,30 @@ def NearestNeighbor(D, start=0):
 
     return tour
 
+
+
 def KnapsackGloutonKCTSP(problem: KCTSPProblem, tour):
     """
-    Glouton pour le KCTSP en prenant en compte le coût du transport dans la fonction objectif.
-    
+    Glouton EXACT pour le KCTSP le long d'un tour donné.
+    Calcule le profit net exact en prenant en compte le poids cumulatif transporté.
+
     Args:
         problem : KCTSPProblem
-        tour : list[int], ordre des villes à visiter (1-based)
-        
+        tour : list[int], ordre des villes à visiter (0-based)
+
     Returns:
         packing_plan : dict[int, list[int]], objets collectés par ville
-        total_profit : float, profit total réel
-        total_transport_cost : float, coût cumulatif du transport
+        objective_value : float, valeur exacte de la fonction objectif
+        total_transport_cost : float
     """
     n = len(tour)
     packing_plan = {}
     carried_weight = 0.0
-    total_profit = 0.0
     total_transport_cost = 0.0
+    total_profit = 0.0
+
+    # Poids cumulatif transporté après chaque ville
+    W_cum = np.zeros(n)
 
     # On parcourt le tour
     for idx, city in enumerate(tour):
@@ -87,49 +75,98 @@ def KnapsackGloutonKCTSP(problem: KCTSPProblem, tour):
         profit = items[:, 0]
         weight = items[:, 1]
 
-        # On calcule pour chaque objet l'impact sur la fonction objectif
-        # c'est-à-dire son profit réel moins le coût de transport additionnel si on le prend
-        # Le coût de transport supplémentaire = poids de l'objet * KW * distance restante
-        dist_restante = 0.0
-        # somme des distances jusqu'à la fin du tour
-        for k in range(idx, n-1):
-            dist_restante += problem.distance(tour[k], tour[k+1])
-
-        # profit net = profit - KW * weight * dist_restante
-        profit_net = profit - problem.kw * weight * dist_restante
-
-        # Trier les objets par profit net décroissant
-        sorted_idx = np.argsort(-profit_net)
-
         selected = []
-        for i in sorted_idx:
-            if carried_weight + weight[i] <= problem.W and profit_net[i] > 0:
-                # on ne prend que si cela améliore la fonction objectif (profit net positif)
+
+        # Tester chaque objet séparément
+        for i in range(len(items)):
+            w_obj = weight[i]
+            p_obj = profit[i]
+
+            # Vérifier la contrainte de sac-à-dos
+            if carried_weight + w_obj > problem.W:
+                continue
+
+            # Calculer le coût de transport additionnel si on prend cet objet
+            transport_add = 0.0
+            for k in range(idx, n-1):
+                transport_add += problem.distance(tour[k], tour[k+1]) * w_obj * problem.kw
+
+            # Profit net si on prend cet objet
+            net_profit = p_obj - transport_add
+
+            if net_profit > 0:
                 selected.append(i)
-                carried_weight += weight[i]
-                total_profit += profit[i]  # profit réel
+                carried_weight += w_obj
+                total_profit += p_obj
+
+                # Mettre à jour le poids cumulatif
+                for k in range(idx, n):
+                    W_cum[k] += w_obj
+
         if selected:
             packing_plan[city] = selected
 
         # Mettre à jour le coût cumulatif pour le transport jusqu'à la prochaine ville
         if idx < n - 1:
             next_city = tour[idx + 1]
-            total_transport_cost += problem.transport_cost(city, next_city, carried_weight)
-    
-    objective_value = total_profit - total_transport_cost
+            total_transport_cost += problem.kw * W_cum[idx] * problem.distance(city, next_city)
 
+    objective_value = total_profit - total_transport_cost
     return packing_plan, objective_value, total_transport_cost
 
 
 
-# Supposons que problem_kc est un KCTSPProblem
-tour = NearestNeighbor(D, start=1)
-packing_plan, profit, transport_cost = KnapsackGloutonKCTSP(problem_kc, tour)
 
-print("Tour :", tour)
-print("Packing plan :", packing_plan)
-print("Profit total :", profit)
-print("Coût total transport :", transport_cost)
+
+
+
+
+if __name__ == "__main__":
+    
+    db = pd.DataFrame(columns=[
+        'problem_name', 'min_speed', 'max_speed', 'renting_ratio',
+        'knapsack_data_type', 'dimension', 'num_items', 'max_weight', 'edge_weight_type'
+    ])
+    
+    # Load a single file without populating database
+    problem_tw = TWDTSPLoader.load_from_file("./cities33810/pla33810_n33809_bounded-strongly-corr_01.ttp")
+
+    kw = 0.01  # coût par km et par kg (à choisir)
+    problem_kc = problem_tw.as_kctsp(weight_cost_per_km=kw)
+    start = time.time()
+
+    n = problem_kc.n
+    D = np.zeros((n, n))
+
+    for i in range(1, n + 1):
+        for j in range(1, n + 1):
+            D[i-1, j-1] = problem_kc.distance(i, j)
+    end = time.time()
+    print("Time D :", end-start)
+
+
+
+    # Supposons que problem_kc est un KCTSPProblem
+    start = time.time()
+    
+    tour = NearestNeighbor(D, start=1)
+    end = time.time()
+    print("Time NearestNeighbor :", end-start)
+    
+    start = time.time()
+    packing_plan, profit = solve_kctsp_knapsack_exact(
+        problem_kc,
+        tour,
+        time_limit=10
+    )
+    end = time.time()
+    print("Time solve_kctsp_knapsack_exact :", end-start)
+    #packing_plan, profit, transport_cost = KnapsackGloutonKCTSP(problem_kc, tour)
+
+    #print("Tour :", tour)
+    print("Packing plan :", packing_plan)
+    print("Profit total :", profit)
+    #print("Coût total transport :", transport_cost)
 
 
         
