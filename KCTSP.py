@@ -6,30 +6,16 @@ from utils_io import TWDTSPLoader
 from instance import KCTSPProblem
 import pandas as pd
 
+import random
+import time
+from typing import List, Tuple, Dict, Any
 
 
+from utils_KCTSP import *
 
-
-import gurobipy as gp
-from gurobipy import GRB
-
+"""
 def solve_KCTSP_LP(problem, D, time_limit=30, verbose=True):
-    """
-    Résout le KCTSP en relaxation PL pour trouver un tour TSP meilleur que NN
-    en tenant compte des objets. Ne force pas les y à être binaires (relaxation).
-    
-    Args:
-        problem : KCTSPProblem
-        D : np.ndarray, matrice des distances (n x n)
-        time_limit : int, secondes
-        verbose : bool
-        
-    Returns:
-        model : Gurobi model résolu
-        x : dict, variables arcs
-        y : dict, variables objets
-        W : dict, variables poids cumulés
-    """
+
     n = problem.n
     items = problem.m
     Wmax = problem.W
@@ -111,6 +97,255 @@ def solve_KCTSP_LP(problem, D, time_limit=30, verbose=True):
     model.optimize()
 
     return model, x, y, W
+"""
+
+
+
+# ------------------------------------------------------
+# Utilitaires : format tour
+# ------------------------------------------------------
+def close_tour(order: List[int], start: int) -> List[int]:
+    """order: permutation des villes (1-based) qui commence par start.
+    Retourne un tour fermé: [..., start]
+    """
+    if order[0] != start:
+        raise ValueError("order must start with start")
+    if order[-1] == start:
+        return order
+    return order + [start]
+
+
+def order_from_closed_tour(tour: List[int]) -> List[int]:
+    """Enlève le dernier start (tour fermé) -> ordre permutation."""
+    if len(tour) >= 2 and tour[0] == tour[-1]:
+        return tour[:-1]
+    return tour
+
+
+# ------------------------------------------------------
+# Évaluation (oracle)
+# ------------------------------------------------------
+def evaluate_tour(problem, order: List[int], start: int):
+    """Retourne (fitness, packing_plan) pour un ordre (non fermé)."""
+    tour = close_tour(order, start)
+    packing_plan, fitness = greedy_kctsp_knapsack(problem, tour)  # doit renvoyer objectif net
+    return fitness, packing_plan
+
+
+# ------------------------------------------------------
+# Initialisation population
+# ------------------------------------------------------
+def init_population(problem, pop_size: int, start: int, nn_seeds: int = 10) -> List[List[int]]:
+    """
+    - nn_seeds tours NN avec départs variés
+    - le reste aléatoire
+    """
+    n = problem.n
+    cities = list(range(1, n + 1))
+    cities.remove(start)
+
+    population = []
+
+    # NN seeds depuis différents starts (si possible)
+    # On garde start fixe comme "dépôt" (comme ton code), mais on varie le second point via permutation
+    for _ in range(min(nn_seeds, pop_size)):
+        nn_tour = tsp_nearest_neighbor(problem, start=start)  # fermé
+        order = order_from_closed_tour(nn_tour)               # ordre
+        population.append(order)
+
+        # petite perturbation pour diversité
+        if len(population) < pop_size and n > 5:
+            pert = order[:]
+            i = random.randint(1, n - 2)
+            j = random.randint(1, n - 2)
+            pert[i], pert[j] = pert[j], pert[i]
+            population.append(pert)
+
+        if len(population) >= pop_size:
+            break
+
+    # Compléter en aléatoire
+    while len(population) < pop_size:
+        perm = cities[:]
+        random.shuffle(perm)
+        order = [start] + perm
+        population.append(order)
+
+    return population[:pop_size]
+
+
+# ------------------------------------------------------
+# Sélection par tournoi
+# ------------------------------------------------------
+def tournament_select(population: List[List[int]], fitnesses: List[float], k: int = 3) -> List[int]:
+    idxs = random.sample(range(len(population)), k)
+    best = max(idxs, key=lambda i: fitnesses[i])
+    return population[best]
+
+
+# ------------------------------------------------------
+# Crossover OX (Order Crossover)
+# ------------------------------------------------------
+def order_crossover_OX(p1: List[int], p2: List[int], start: int) -> List[int]:
+    """
+    Parents p1,p2 : permutations 1-based commençant par start, non fermées.
+    OX sur les positions 1..n-1 (on fige start à la position 0).
+    """
+    n = len(p1)
+    assert p1[0] == start and p2[0] == start
+
+    # Choisir segment sur [1, n-1)
+    a = random.randint(1, n - 2)
+    b = random.randint(a + 1, n - 1)
+
+    child = [None] * n
+    child[0] = start
+
+    # Copier segment de p1
+    child[a:b] = p1[a:b]
+    used = set(child[a:b])
+    used.add(start)
+
+    # Remplir avec p2 dans l'ordre
+    fill_positions = [i for i in range(1, n) if child[i] is None]
+    fill_values = [c for c in p2[1:] if c not in used]
+
+    for pos, val in zip(fill_positions, fill_values):
+        child[pos] = val
+
+    return child
+
+
+# ------------------------------------------------------
+# Mutations
+# ------------------------------------------------------
+def mutate_swap(order: List[int]) -> List[int]:
+    n = len(order)
+    if n <= 3:
+        return order[:]
+    new = order[:]
+    i = random.randint(1, n - 1)
+    j = random.randint(1, n - 1)
+    new[i], new[j] = new[j], new[i]
+    return new
+
+
+def mutate_two_opt(order: List[int]) -> List[int]:
+    n = len(order)
+    if n <= 4:
+        return order[:]
+    new = order[:]
+    i = random.randint(1, n - 3)
+    j = random.randint(i + 1, n - 1)
+    new[i:j] = reversed(new[i:j])
+    return new
+
+
+def mutate_relocate(order: List[int]) -> List[int]:
+    n = len(order)
+    if n <= 4:
+        return order[:]
+    new = order[:]
+    i = random.randint(1, n - 1)
+    city = new.pop(i)
+    j = random.randint(1, n - 1)
+    new.insert(j, city)
+    return new
+
+
+def mutate(order: List[int], p_swap=0.4, p_twoopt=0.4, p_reloc=0.2) -> List[int]:
+    r = random.random()
+    if r < p_swap:
+        return mutate_swap(order)
+    elif r < p_swap + p_twoopt:
+        return mutate_two_opt(order)
+    else:
+        return mutate_relocate(order)
+
+
+# ------------------------------------------------------
+# GA principal
+# ------------------------------------------------------
+def solve_kctsp_ga(
+    problem,
+    start: int = 1,
+    pop_size: int = 30,
+    generations: int = 50,
+    elite: int = 2,
+    tournament_k: int = 3,
+    p_crossover: float = 0.9,
+    p_mutation: float = 0.3,
+    time_limit: float = None,
+    seed: int = 0,
+    verbose: bool = True,
+):
+    random.seed(seed)
+
+    # Init
+    population = init_population(problem, pop_size=pop_size, start=start, nn_seeds=min(10, pop_size))
+    fitnesses = []
+    packings = []
+
+    for ind in population:
+        fit, pack = evaluate_tour(problem, ind, start)
+        fitnesses.append(fit)
+        packings.append(pack)
+
+    best_idx = max(range(pop_size), key=lambda i: fitnesses[i])
+    best_order = population[best_idx][:]
+    best_fit = fitnesses[best_idx]
+    best_pack = packings[best_idx]
+
+    t0 = time.time()
+
+    for gen in range(generations):
+        if time_limit is not None and (time.time() - t0) > time_limit:
+            break
+
+        # Trier population par fitness pour élite
+        ranked = sorted(range(len(population)), key=lambda i: fitnesses[i], reverse=True)
+        new_population = [population[i][:] for i in ranked[:elite]]
+
+        # Générer enfants
+        while len(new_population) < pop_size:
+            parent1 = tournament_select(population, fitnesses, k=tournament_k)
+            parent2 = tournament_select(population, fitnesses, k=tournament_k)
+
+            if random.random() < p_crossover:
+                child = order_crossover_OX(parent1, parent2, start=start)
+            else:
+                child = parent1[:]
+
+            if random.random() < p_mutation:
+                child = mutate(child)
+
+            new_population.append(child)
+
+        # Évaluer nouvelle pop
+        population = new_population
+        fitnesses = []
+        packings = []
+        for ind in population:
+            fit, pack = evaluate_tour(problem, ind, start)
+            fitnesses.append(fit)
+            packings.append(pack)
+
+        # Mise à jour best
+        gen_best_idx = max(range(pop_size), key=lambda i: fitnesses[i])
+        if fitnesses[gen_best_idx] > best_fit:
+            best_fit = fitnesses[gen_best_idx]
+            best_order = population[gen_best_idx][:]
+            best_pack = packings[gen_best_idx]
+
+        if verbose:
+            print(f"[Gen {gen+1:03d}] best={best_fit:.4f}  current_best={max(fitnesses):.4f}")
+
+    best_tour = close_tour(best_order, start)
+    return {
+        "tour": best_tour,
+        "packing_plan": best_pack,
+        "objective": best_fit,
+    }
 
 
 def extract_tour_from_x(x, n, start=0):
@@ -148,90 +383,21 @@ def extract_tour_from_x(x, n, start=0):
     return tour
 
 
-def compute_remaining_distances(problem, tour):
-    """
-    Calcule la distance restante après chaque ville du tour.
+def solve_kctsp_greedy(problem, start_city=1):
+    tour = tsp_nearest_neighbor(problem, start=start_city)
+    start = time.time()
     
-    Args:
-        problem : KCTSPProblem
-        tour : list[int] (1-based)
-        
-    Returns:
-        remaining_dist : dict[int, float]
-            distance restante à partir de chaque ville
-    """
-    n = len(tour)
-    remaining_dist = {}
-
-    for i in range(n):
-        d = 0.0
-        for k in range(i, n - 1):
-            d += problem.distance(tour[k], tour[k + 1])
-        # retour au dépôt
-        d += problem.distance(tour[-1], tour[0])
-        remaining_dist[tour[i]] = d
-
-    return remaining_dist
-
-def solve_kctsp_knapsack_exact(problem, tour, time_limit=30, verbose=True):
-    """
-    Résout exactement le KCTSP pour un tour fixé via PLNE (Gurobi).
+    packing_plan, profit = greedy_kctsp_knapsack(problem, tour)
+    end = time.time()
+    print("time greedy_kctsp_knapsack :", end-start)
+    return {
+        "tour": tour,
+        "packing_plan": packing_plan,
+        "profit": profit
+    }
     
-    Args:
-        problem : KCTSPProblem
-        tour : list[int] (1-based)
-        time_limit : int (secondes)
-        verbose : bool
-        
-    Returns:
-        packing_plan : dict[int, list[int]]
-        objective_value : float
-    """
-    remaining_dist = compute_remaining_distances(problem, tour)
 
-    m = gp.Model("KCTSP_Knapsack_FixedTour")
 
-    if not verbose:
-        m.setParam("OutputFlag", 0)
-    m.setParam("TimeLimit", time_limit)
-
-    y = {}   # variable par objet
-    obj_terms = []
-
-    # création des variables
-    for city in tour:
-        items = problem.city_items(city)
-        if len(items) == 0:
-            continue
-
-        for j, (profit, weight) in enumerate(items):
-            var_name = f"y_{city}_{j}"
-            y[(city, j)] = m.addVar(vtype=GRB.BINARY, name=var_name)
-
-            net_profit = profit - problem.kw * weight * remaining_dist[city]
-            obj_terms.append(net_profit * y[(city, j)])
-
-    # fonction objectif
-    m.setObjective(gp.quicksum(obj_terms), GRB.MAXIMIZE)
-
-    # contrainte de capacité
-    m.addConstr(
-        gp.quicksum(
-            problem.city_items(city)[j][1] * y[(city, j)]
-            for (city, j) in y
-        ) <= problem.W,
-        name="capacity"
-    )
-
-    m.optimize()
-
-    # extraction de la solution
-    packing_plan = {}
-    for (city, j), var in y.items():
-        if var.X > 0.5:
-            packing_plan.setdefault(city, []).append(j)
-
-    return packing_plan, m.ObjVal
 
 if __name__ == "__main__":
     db = pd.DataFrame(columns=[
@@ -240,11 +406,11 @@ if __name__ == "__main__":
     ])
     
     # Load a single file without populating database
-    problem_tw = TWDTSPLoader.load_from_file("./data/a280_n279_bounded-strongly-corr_01.ttp")
+    problem_tw = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n4460_bounded-strongly-corr_01.ttp")
 
-    kw = 0.01  # coût par km et par kg (à choisir)
+    kw = 1.0/problem_tw.n   # coût par km et par kg (à choisir)
     problem_kc = problem_tw.as_kctsp(weight_cost_per_km=kw)
-
+    """
     n = problem_kc.n
     D = np.zeros((n, n))
 
@@ -267,3 +433,10 @@ if __name__ == "__main__":
 
     print("Valeur objective exacte :", obj_value)
     print("Objets sélectionnés :", packing_plan)
+    """
+    print("solve_kctsp_greedy", solve_kctsp_greedy(problem_kc))
+    
+    res = solve_kctsp_ga(problem_kc, start=1, pop_size=30, generations=50, elite=2, seed=0)
+    print(res["objective"])
+    print(len(res["packing_plan"]), "villes avec objets")
+    print(res["tour"][:20], "...")
