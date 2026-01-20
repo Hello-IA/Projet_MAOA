@@ -27,6 +27,8 @@ def solve_kctsp_greedy(problem, start_city=1):
         "profit": profit
     }
     
+
+    
 def solve_kctsp_exact(problem, start_city=1):
     tour = tsp_nearest_neighbor(problem, start=start_city)
     packing_plan, profit = solve_kctsp_knapsack_exact(problem, tour)

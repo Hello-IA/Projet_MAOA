@@ -1,104 +1,13 @@
-import gurobipy as gp
-from gurobipy import GRB
-import numpy as np
-
 from utils_io import TWDTSPLoader
 from instance import KCTSPProblem
 import pandas as pd
 
 import random
 import time
-from typing import List, Tuple, Dict, Any
+from typing import List
 
 
 from utils_KCTSP import *
-
-"""
-def solve_KCTSP_LP(problem, D, time_limit=30, verbose=True):
-
-    n = problem.n
-    items = problem.m
-    Wmax = problem.W
-    KW = problem.kw
-
-    model = gp.Model("KCTSP_LP")
-    if not verbose:
-        model.Params.OutputFlag = 0
-    model.Params.TimeLimit = time_limit
-
-    # -------------------
-    # Variables
-    # -------------------
-    x = model.addVars(n, n, lb=0, ub=1, name="x")   # arc i->j
-    W = model.addVars(n, lb=0, ub=Wmax, name="W")   # poids cumulés après ville i
-    z = model.addVars(n, n, lb=0, ub=Wmax, name="z")# poids transporté sur arc i->j
-
-    y = {}
-    for i, it in items.items():  # i = 0-based city
-        for k in range(len(it)):
-            y[i, k] = model.addVar(lb=0, ub=1, name=f"y_{i}_{k}")  # relaxation continue
-
-    model.update()
-
-    # -------------------
-    # Contraintes TSP (degré)
-    # -------------------
-    for i in range(n):
-        model.addConstr(gp.quicksum(x[i,j] for j in range(n) if j != i) == 1)
-        model.addConstr(gp.quicksum(x[j,i] for j in range(n) if j != i) == 1)
-        model.addConstr(W[i] <= Wmax)
-
-    # -------------------
-    # Contraintes sac-à-dos
-    # -------------------
-    model.addConstr(
-        gp.quicksum(items[i][k][1] * y[i,k] for i in items for k in range(len(items[i]))) <= Wmax,
-        name="capacity"
-    )
-
-    # -------------------
-    # Contraintes McCormick pour z[i,j] = W[i] * x[i,j]
-    # -------------------
-    for i in range(n):
-        for j in range(n):
-            model.addConstr(z[i,j] <= W[i])
-            model.addConstr(z[i,j] <= Wmax * x[i,j])
-            model.addConstr(z[i,j] >= W[i] - Wmax * (1 - x[i,j]))
-            model.addConstr(z[i,j] >= 0)
-
-    # -------------------
-    # Contraintes MTZ pour supprimer les sous-tours
-    # -------------------
-    u = model.addVars(n, lb=0, ub=n-1, name="u")
-    for i in range(1, n):
-        for j in range(1, n):
-            if i != j:
-                model.addConstr(u[i] - u[j] + n * x[i,j] <= n-1)
-
-    # -------------------
-    # Big-M pour W[j] = W[i] + poids objets à j si arc choisi
-    # -------------------
-    M = sum(items[i][k][1] for i in items for k in range(len(items[i])))
-    for i in range(n):
-        for j in range(n):
-            if i != j:
-                model.addConstr(
-                    W[j] >= W[i] + gp.quicksum(items.get(j,[])[k][1] * y[j,k] for k in range(len(items.get(j,[])))) - M*(1 - x[i,j])
-                )
-
-    # -------------------
-    # Fonction objectif : profit - coût transport
-    # -------------------
-    obj_profit = gp.quicksum(items[i][k][0] * y[i,k] for i in items for k in range(len(items[i])))
-    obj_transport = gp.quicksum(KW * D[i,j] * z[i,j] for i in range(n) for j in range(n) if i != j)
-
-    model.setObjective(obj_profit - obj_transport, GRB.MAXIMIZE)
-
-    model.optimize()
-
-    return model, x, y, W
-"""
-
 
 
 # ------------------------------------------------------
@@ -135,7 +44,7 @@ def evaluate_tour(problem, order: List[int], start: int):
 # ------------------------------------------------------
 # Initialisation population
 # ------------------------------------------------------
-def init_population(problem, pop_size: int, start: int, nn_seeds: int = 10) -> List[List[int]]:
+def init_population(problem, pop_size: int, start: int, n_perturb: int = 20, nn_seeds: int = 10) -> List[List[int]]:
     """
     - nn_seeds tours NN avec départs variés
     - le reste aléatoire
@@ -146,23 +55,24 @@ def init_population(problem, pop_size: int, start: int, nn_seeds: int = 10) -> L
 
     population = []
 
-    # NN seeds depuis différents starts (si possible)
-    # On garde start fixe comme "dépôt" (comme ton code), mais on varie le second point via permutation
-    for _ in range(min(nn_seeds, pop_size)):
-        nn_tour = tsp_nearest_neighbor(problem, start=start)  # fermé
-        order = order_from_closed_tour(nn_tour)               # ordre
-        population.append(order)
+    # 1) Un seul NN (cher)
+    nn_tour = tsp_nearest_neighbor(problem, start=start)  # fermé
+    nn_order = order_from_closed_tour(nn_tour)            # non fermé
+    population.append(nn_order)
 
-        # petite perturbation pour diversité
-        if len(population) < pop_size and n > 5:
-            pert = order[:]
-            i = random.randint(1, n - 2)
-            j = random.randint(1, n - 2)
-            pert[i], pert[j] = pert[j], pert[i]
-            population.append(pert)
+    # 2) Générer des variantes rapides (pas de NN)
+    while len(population) < min(pop_size, 1 + n_perturb):
+        child = nn_order[:]
 
-        if len(population) >= pop_size:
-            break
+        r = random.random()
+        if r < 0.34:
+            child = mutate_swap(child)
+        elif r < 0.67:
+            child = mutate_two_opt(child)
+        else:
+            child = mutate_relocate(child)
+
+        population.append(child)
 
     # Compléter en aléatoire
     while len(population) < pop_size:
@@ -282,7 +192,7 @@ def solve_kctsp_ga(
     random.seed(seed)
 
     # Init
-    population = init_population(problem, pop_size=pop_size, start=start, nn_seeds=min(10, pop_size))
+    population = init_population(problem, pop_size=pop_size, start=start, n_perturb = 20, nn_seeds=min(10, pop_size))
     fitnesses = []
     packings = []
 
@@ -348,40 +258,6 @@ def solve_kctsp_ga(
     }
 
 
-def extract_tour_from_x(x, n, start=0):
-    """
-    Construire un tour entier à partir d'une solution fractionnaire du LP relaxé.
-    
-    Args:
-        x : dict[(i,j)] -> valeur flottante [0,1] de la solution LP
-        n : int, nombre de villes
-        start : int, ville de départ (0-based)
-    
-    Returns:
-        tour : list[int], tour entier (0-based)
-    """
-    tour = [start]
-    visited = set(tour)
-
-    current = start
-    while len(tour) < n:
-        # sélectionne les arcs fractionnaires vers les villes non visitées
-        candidates = [(j, x[current, j].X) for j in range(n) if j not in visited]
-        if not candidates:
-            # cas rare : toutes les villes ont été visitées, on casse
-            remaining = [j for j in range(n) if j not in visited]
-            candidates = [(j, 0.0) for j in remaining]
-
-        # choisir l'arc avec la valeur la plus élevée
-        next_city = max(candidates, key=lambda t: t[1])[0]
-        tour.append(next_city)
-        visited.add(next_city)
-        current = next_city
-
-    # retour au dépôt
-    tour.append(start)
-    return tour
-
 
 def solve_kctsp_greedy(problem, start_city=1):
     tour = tsp_nearest_neighbor(problem, start=start_city)
@@ -410,33 +286,14 @@ if __name__ == "__main__":
 
     kw = 1.0/problem_tw.n   # coût par km et par kg (à choisir)
     problem_kc = problem_tw.as_kctsp(weight_cost_per_km=kw)
-    """
-    n = problem_kc.n
-    D = np.zeros((n, n))
-
-    for i in range(1, n + 1):
-        for j in range(1, n + 1):
-            D[i-1, j-1] = problem_kc.distance(i, j)
-
-
-
-    model, x, y, W = solve_KCTSP_LP(problem_kc, D)
-
-    tour = extract_tour_from_x(x, n)
-    print(tour)
-
-    packing_plan, obj_value = solve_kctsp_knapsack_exact(
-        problem_kc,
-        tour,
-        time_limit=10
-    )
-
-    print("Valeur objective exacte :", obj_value)
-    print("Objets sélectionnés :", packing_plan)
-    """
-    print("solve_kctsp_greedy", solve_kctsp_greedy(problem_kc))
     
-    res = solve_kctsp_ga(problem_kc, start=1, pop_size=30, generations=50, elite=2, seed=0)
+    
+    #print("solve_kctsp_greedy", solve_kctsp_greedy(problem_kc))
+    
+    
+    res = solve_kctsp_ga(problem_kc, start=1, pop_size=30, generations=200, elite=2, seed=0)
     print(res["objective"])
     print(len(res["packing_plan"]), "villes avec objets")
     print(res["tour"][:20], "...")
+    
+    print(solve_kctsp_knapsack_exact(problem_kc, res["tour"]))
