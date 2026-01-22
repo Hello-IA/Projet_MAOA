@@ -57,9 +57,6 @@ class MALTS:
     def solve(self) -> TWDTSPSolution:
         """
         Run the MALTS algorithm
-        
-        Returns:
-            Best solution found
         """
         total_start = time.perf_counter()
         timing = {
@@ -148,23 +145,26 @@ class MALTS:
         return self.best_solution
     
     def _initialize_greedy_population(self) -> List[TWDTSPSolution]:
+        """
+        Intialize population with custom greedy method
+        """
         population = []
+
         greedySolver = GreedyTTPSolver(self.problem)
         solution = greedySolver.tsp_first(group_size=self.problem.n // 5)
         tour = solution.tour
-        print(tour)
+
         for i in range(self.pop_size - 1):
             solution = greedySolver.tsp_first(group_size=self.problem.n // 5, seed=i, tour=tour)
             population.append(solution)
-        return population
 
+        return population
     
     def _initialize_population(self) -> List[TWDTSPSolution]:
         """
         Initialize population with random solutions
         """
         population = []
-
         
         for i in range(self.pop_size):
             # Create random tour
@@ -248,7 +248,7 @@ class MALTS:
     
     def _calculate_totals(self, packing_plan: np.ndarray) -> Tuple[float, float]:
         """
-        Calculate total profit and weight from packing plan
+        Calculate total profit and weight from packing plan (just for solution display)
         """
         total_profit = np.sum(packing_plan * self.problem.p)
         total_weight = np.sum(packing_plan * self.problem.w)
@@ -493,11 +493,11 @@ class MALTS:
 # Example usage
 if __name__ == "__main__":
 
-    #problem = TWDTSPLoader.load_from_file("./cities280/a280_n279_bounded-strongly-corr_01.ttp.txt", asTTP=True)
+    problem = TWDTSPLoader.load_from_file("./cities280/a280_n279_bounded-strongly-corr_01.ttp", asTTP=True)
     #problem = TWDTSPLoader.load_from_file("./cities280/a280_n1395_uncorr-similar-weights_05.ttp.txt", asTTP=True)
     #problem = TWDTSPLoader.load_from_file("./cities280/a280_n2790_uncorr_10.ttp.txt", asTTP=True)
     #problem = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n4460_bounded-strongly-corr_01.ttp.txt", asTTP=True)
-    problem = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n22300_uncorr-similar-weights_05.ttp.txt", asTTP=True)
+    #problem = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n22300_uncorr-similar-weights_05.ttp.txt", asTTP=True)
 
 
     # Run MALTS

@@ -8,7 +8,7 @@ class LKSolver:
 
     def _precompute_candidates(self, max_neighbors=20):
         """
-        Precompute k-nearest for ALL cities (O(n^2 log n) once, then O(1))
+        Precompute k-nearest for all cities
         """
         n = len(self.instance)
         candidates = [[] for _ in range(n)]

@@ -6,7 +6,7 @@ from typing import List
 def insertion_heuristic(problem: TTPProblem, tour: List[int]) -> np.ndarray:
         """
         Insertion heuristic based on Algorithm 2 from the paper
-        Uses three approximations: empty-tour, worst-case, and expected increased time
+        with three approximations: empty-tour, worst-case, and expected increased time
         """
         max_items = problem.p.shape[1]
         packing_plan = np.zeros((problem.n, max_items), dtype=int)

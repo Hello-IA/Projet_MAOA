@@ -51,7 +51,7 @@ Description :
     puis sélectionne les objets avec un glouton de sac-à-dos.
 
 
-4) Algorithme mémétique MA2B pour le TTP
+4) Algorithme mémétique pseudo-MA2B pour le TTP
 --------------------------------------
 Fichier :
     MA2B.py
@@ -60,8 +60,7 @@ Commande :
     python MA2B.py
 
 Description :
-    Algorithme mémétique avec recherche locale TSP et sac-à-dos,
-    basé sur l’article de Mei et al.
+    Algorithme mémétique avec recherche locale sur les mutations TSP
 
 
 ----------------------------------
@@ -95,7 +94,10 @@ LK.py
     Implémentation de l’algorithme Lin-Kernighan pour le TSP.
 
 MA2B.py
-    Algorithme mémétique MA2B pour le TTP.
+    Algorithme mémétique pseudo-MA2B pour le TTP.
+
+MATLS.py
+    Algorithme mémétique classique + initialisation gloutonne.
 
 
 ----------------------------------

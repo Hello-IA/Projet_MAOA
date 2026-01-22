@@ -1,13 +1,12 @@
 from output import TWDTSPSolution
 from instance import TTPProblem
 from utils_io import TWDTSPLoader
-import testKP
+from KP_heuristic import insertion_heuristic
 
 import time
 import numpy as np
 import copy
 from typing import List, Tuple, Dict
-from KP_heuristic import insertion_heuristic
 
 
 class MA2B:
@@ -35,7 +34,7 @@ class MA2B:
         
         Args:
             problem: TTP problem instance
-            pop_size: Population size (default 30 as in paper)
+            pop_size: Population size
             num_generations: Number of generations
             tsp_iterations: Number of 2-opt iterations for TSP stage
             kp_iterations: Number of flip iterations for KP stage
@@ -57,19 +56,28 @@ class MA2B:
     def solve(self) -> TWDTSPSolution:
         """
         Run the MA2B algorithm
-        
-        Returns:
-            Best solution found
         """
         total_start = time.perf_counter()
+
+        initialization_time = [0.0]
+        evaluation_time = [0.0]
+        selection_time = [0.0]
+        crossover_time = [0.0]
+        local_search_time = [0.0]
+        generation_time = [0.0]
         
         # Initialize population
         print("Initializing population...")
+        t0 = time.perf_counter()
         population = self._initialize_population()
+        initialization_time.append(time.perf_counter() - t0)
         
         for gen in range(self.num_generations):
+            generation_t0 = 0
             # Evaluate population
+            t0 = time.perf_counter()
             fitness_scores = [self.obj_func(sol) for sol in population]
+            evaluation_time.append(time.perf_counter() - t0)
             
             # Update best solution
             max_idx = np.argmax(fitness_scores)
@@ -82,23 +90,38 @@ class MA2B:
             
             # Generate offspring
             # Select two random parents
+            t0 = time.perf_counter()
             parent1_idx = np.random.randint(len(population))
             parent2_idx = np.random.randint(len(population))
+            selection_time.append(time.perf_counter() - t0)
             parent1 = population[parent1_idx]
             parent2 = population[parent2_idx]
             
             # Crossover (ordered crossover for tour)
+            t0 = time.perf_counter()
             offspring = self._ordered_crossover(parent1, parent2)
+            crossover_time.append(time.perf_counter() - t0)
             
             # Two-stage local search
+            t0 = time.perf_counter()
             offspring = self._two_stage_local_search(offspring)
+            local_search_time.append(time.perf_counter() - t0)
             
             # Replace worst individual
             worst_idx = np.argmin(fitness_scores)
             population[worst_idx] = offspring
+
+            generation_time.append(time.perf_counter() - generation_t0)
         
         total_time = time.perf_counter() - total_start
         print(f"\nTotal runtime: {total_time:.2f}s")
+        
+        print(f"Initialization:      {initialization_time[0]:.2f}s")
+        print(f"Evaluation:          total={sum(evaluation_time):.2f}s, avg={sum(evaluation_time)/self.num_generations}s")
+        print(f"Selection:           total={sum(selection_time):.2f}s, avg={sum(selection_time)/self.num_generations}s")
+        print(f"Crossover:           total={sum(crossover_time):.2f}s, avg={sum(crossover_time)/self.num_generations}s")
+        print(f"Local search:        total={sum(local_search_time):.2f}s, avg={sum(local_search_time)/self.num_generations}s")
+        print(f"Generation overhead: total={sum(generation_time):.2f}s, avg={sum(generation_time)/self.num_generations}s")
         
         return self.best_solution
     
@@ -169,7 +192,7 @@ class MA2B:
     
     def _calculate_totals(self, packing_plan: np.ndarray) -> Tuple[float, float]:
         """
-        Calculate total profit and weight from packing plan
+        Calculate total profit and weight from packing plan (just for solution display)
         """
         total_profit = np.sum(packing_plan * self.problem.p)
         total_weight = np.sum(packing_plan * self.problem.w)
@@ -178,7 +201,7 @@ class MA2B:
     def _ordered_crossover(self, parent1: TWDTSPSolution, 
                           parent2: TWDTSPSolution) -> TWDTSPSolution:
         """
-        Ordered crossover (OX) for tour as described in the paper
+        Ordered crossover (OX) for tour
         """
         tour1 = parent1.tour[:-1]  # Remove duplicate last city
         tour2 = parent2.tour[:-1]
@@ -216,9 +239,7 @@ class MA2B:
     
     def _two_stage_local_search(self, solution: TWDTSPSolution) -> TWDTSPSolution:
         """
-        Two-stage local search as described in Section 5 of the paper
-        Stage 1: TSP search (minimize tour length)
-        Stage 2: KP search (optimize packing plan given tour)
+        Two-stage local search
         """
         current = copy.deepcopy(solution)
         
@@ -328,10 +349,14 @@ class MA2B:
 # Example usage
 if __name__ == "__main__":
 
-    #problem = TWDTSPLoader.load_from_file("./cities280/a280_n279_bounded-strongly-corr_01.ttp.txt", asTTP=True)
+    problem = TWDTSPLoader.load_from_file("./cities280/a280_n279_bounded-strongly-corr_01.ttp", asTTP=True)
     #problem = TWDTSPLoader.load_from_file("./cities280/a280_n1395_uncorr-similar-weights_05.ttp.txt", asTTP=True)
     #problem = TWDTSPLoader.load_from_file("./cities280/a280_n2790_uncorr_10.ttp.txt", asTTP=True)
-    problem = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n4460_bounded-strongly-corr_01.ttp.txt", asTTP=True)
+    #problem = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n4460_bounded-strongly-corr_01.ttp.txt", asTTP=True) failed
+    #problem = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n22300_uncorr-similar-weights_05.ttp", asTTP=True)
+    #problem = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n44600_uncorr_10.ttp.txt", asTTP=True)
+    #problem = TWDTSPLoader.load_from_file("./cities33810/pla33810_n33809_bounded-strongly-corr_01.ttp", asTTP=True)
+
 
     
     # Run MA2B

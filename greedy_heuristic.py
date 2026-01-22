@@ -5,12 +5,20 @@ import LK
 
 import random
 import numpy as np
+import time
 
 class GreedyTTPSolver:
+    """
+    A TSP-first Greedy two steps algorithm for the Travelling Thief Problem
+    """
     def __init__(self, problem: TTPProblem):
         self.problem = problem
+
     
     def _solve_kp(self, items):
+        """
+        Greedy method for the KP problem (profit/weight ratio based)
+        """
         if not items:
             return []
 
@@ -41,6 +49,10 @@ class GreedyTTPSolver:
 
     # TSP first greedy heuristic
     def tsp_first(self, group_size:int=0, picking_factor=0.7, seed=42, tour=None):
+        """
+        The TTP greedy algorithm
+        """
+        t0 = time.perf_counter()
         # approximated lower bound for the TTP problem with no items
         if not tour:
             lkSolver = LK.LKSolver(self.problem.coords)
@@ -78,7 +90,7 @@ class GreedyTTPSolver:
         anti_candidates = []
         random.seed(seed)
         for solution in solutions:
-            pick_num = int(picking_factor * (i+1) * len(solution))
+            pick_num = int(picking_factor * (1/(i+1)) * len(solution))
             picked = random.sample(solution, pick_num)
             not_picked = [x for x in solution if x not in picked]
             candidates.extend(picked)
@@ -105,17 +117,31 @@ class GreedyTTPSolver:
                 ttp_solution_score = new_ttp_solution_score
 
         print("score= ", ttp_solution_score)
+        print("Total runtime = ", time.perf_counter() - t0)
         return ttp_solution
     
 # Example usage
 if __name__ == "__main__":
 
-    problem = TWDTSPLoader.load_from_file("./cities280/a280_n279_bounded-strongly-corr_01.ttp.txt", asTTP=True)
+    problem = TWDTSPLoader.load_from_file("./cities280/a280_n2790_uncorr_10.ttp.txt", asTTP=True)
+    #problem = TWDTSPLoader.load_from_file("./cities280/a280_n279_bounded-strongly-corr_01.ttp", asTTP=True)
     #problem = TWDTSPLoader.load_from_file("./cities280/a280_n1395_uncorr-similar-weights_05.ttp.txt", asTTP=True)
     #problem = TWDTSPLoader.load_from_file("./cities280/a280_n2790_uncorr_10.ttp.txt", asTTP=True)
     #problem = TWDTSPLoader.load_from_file("./cities4461/fnl4461_n4460_bounded-strongly-corr_01.ttp.txt", asTTP=True)
 
-
     greedySolver = GreedyTTPSolver(problem)
+    
+    #solution = greedySolver.tsp_first(group_size=280)
+    #solution = greedySolver.tsp_first(group_size=200)
+    #solution = greedySolver.tsp_first(group_size=100)
+    #solution = greedySolver.tsp_first(group_size=75)
     solution = greedySolver.tsp_first(group_size=50)
+    #solution = greedySolver.tsp_first(group_size=25)
+    #solution = greedySolver.tsp_first(group_size=10)
+
+    #solution = greedySolver.tsp_first(group_size=50, picking_factor=1)
+    #solution = greedySolver.tsp_first(group_size=50, picking_factor=0.75)
+    #solution = greedySolver.tsp_first(group_size=50, picking_factor=0.5)
+    #solution = greedySolver.tsp_first(group_size=50, picking_factor=0.25)
+
     print(solution)
