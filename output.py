@@ -187,7 +187,7 @@ class TWDTSPSolution:
             str(start),
             shape="doublecircle"
             )
-    
+        """
         # add profit labels on cities
         for city in range(coords.shape[0]):
             x, y = coords[city]
@@ -206,7 +206,7 @@ class TWDTSPSolution:
                 height=f"{scale * 0.2 / 5}",  # 0.2 at scale=5
                 fixedsize="false"
             )
-    
+        """
         # legend for weight coloration
         LEGEND_X = scale + scale * 1 / 5  # (scale + 1) at scale=5
         N_LEGEND = 30      # number of gradient steps

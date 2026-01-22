@@ -20,12 +20,10 @@ def solve_KCTSP_LP(problem, D, time_limit=30, verbose=True):
         model.Params.OutputFlag = 0
     model.Params.TimeLimit = time_limit
 
-    # -------------------
     # Variables
-    # -------------------
     x = model.addVars(n, n, lb=0, ub=1, name="x")   # arc i->j
-    W = model.addVars(n, lb=0, ub=Wmax, name="W")   # poids cumulés après ville i
-    z = model.addVars(n, n, lb=0, ub=Wmax, name="z")# poids transporté sur arc i->j
+    W = model.addVars(n, lb=0, ub=Wmax, name="W")   # poids cumules apres ville i
+    z = model.addVars(n, n, lb=0, ub=Wmax, name="z")# poids transporte sur arc i->j
 
     y = {}
     for i, it in items.items():  # i = 0-based city
@@ -34,25 +32,20 @@ def solve_KCTSP_LP(problem, D, time_limit=30, verbose=True):
 
     model.update()
 
-    # -------------------
-    # Contraintes TSP (degré)
-    # -------------------
+    # Contraintes TSP (degre)
     for i in range(n):
         model.addConstr(gp.quicksum(x[i,j] for j in range(n) if j != i) == 1)
         model.addConstr(gp.quicksum(x[j,i] for j in range(n) if j != i) == 1)
         model.addConstr(W[i] <= Wmax)
 
-    # -------------------
-    # Contraintes sac-à-dos
-    # -------------------
+    # Contraintes sac-a-dos
     model.addConstr(
         gp.quicksum(items[i][k][1] * y[i,k] for i in items for k in range(len(items[i]))) <= Wmax,
         name="capacity"
     )
 
-    # -------------------
+
     # Contraintes McCormick pour z[i,j] = W[i] * x[i,j]
-    # -------------------
     for i in range(n):
         for j in range(n):
             model.addConstr(z[i,j] <= W[i])
@@ -60,18 +53,15 @@ def solve_KCTSP_LP(problem, D, time_limit=30, verbose=True):
             model.addConstr(z[i,j] >= W[i] - Wmax * (1 - x[i,j]))
             model.addConstr(z[i,j] >= 0)
 
-    # -------------------
     # Contraintes MTZ pour supprimer les sous-tours
-    # -------------------
     u = model.addVars(n, lb=0, ub=n-1, name="u")
     for i in range(1, n):
         for j in range(1, n):
             if i != j:
                 model.addConstr(u[i] - u[j] + n * x[i,j] <= n-1)
 
-    # -------------------
-    # Big-M pour W[j] = W[i] + poids objets à j si arc choisi
-    # -------------------
+
+    # Big-M pour W[j] = W[i] + poids objets a j si arc choisi
     M = sum(items[i][k][1] for i in items for k in range(len(items[i])))
     for i in range(n):
         for j in range(n):
@@ -80,9 +70,8 @@ def solve_KCTSP_LP(problem, D, time_limit=30, verbose=True):
                     W[j] >= W[i] + gp.quicksum(items.get(j,[])[k][1] * y[j,k] for k in range(len(items.get(j,[])))) - M*(1 - x[i,j])
                 )
 
-    # -------------------
-    # Fonction objectif : profit - coût transport
-    # -------------------
+
+    # Fonction objectif : profit - cout transport
     obj_profit = gp.quicksum(items[i][k][0] * y[i,k] for i in items for k in range(len(items[i])))
     obj_transport = gp.quicksum(KW * D[i,j] * z[i,j] for i in range(n) for j in range(n) if i != j)
 
@@ -100,20 +89,20 @@ def extract_tour_from_x(x, n, start=0):
 
     current = start
     while len(tour) < n:
-        # sélectionne les arcs fractionnaires vers les villes non visitées
+        # selectionne les arcs fractionnaires vers les villes non visitees
         candidates = [(j, x[current, j].X) for j in range(n) if j not in visited]
         if not candidates:
-            # cas rare : toutes les villes ont été visitées, on casse
+            # cas rare : toutes les villes ont ete visitees, on casse
             remaining = [j for j in range(n) if j not in visited]
             candidates = [(j, 0.0) for j in remaining]
 
-        # choisir l'arc avec la valeur la plus élevée
+        # choisir l'arc avec la valeur la plus elevee
         next_city = max(candidates, key=lambda t: t[1])[0]
         tour.append(next_city)
         visited.add(next_city)
         current = next_city
 
-    # retour au dépôt
+    # retour au depot
     tour.append(start)
     return tour
 
@@ -152,4 +141,4 @@ if __name__ == "naim":
     )
 
     print("Valeur objective exacte :", obj_value)
-    print("Objets sélectionnés :", packing_plan)
+    print("Objets selectionnes :", packing_plan)

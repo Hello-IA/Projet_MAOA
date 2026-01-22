@@ -11,9 +11,7 @@ import math
 
 
 
-# ======================================================
-# 4) Solveur KCTSP glouton complet
-# ======================================================
+# Solveur KCTSP glouton complet
 def solve_kctsp_greedy(problem, start_city=1):
     tour = tsp_nearest_neighbor(problem, start=start_city)
     start = time.time()
@@ -30,9 +28,18 @@ def solve_kctsp_greedy(problem, start_city=1):
 
     
 def solve_kctsp_exact(problem, start_city=1):
+    f1 = open("plot/gouton_time.txt", "w")
+    f2 = open("plot/glouton_profit", "w")
+    star_init_time = time.time()
     tour = tsp_nearest_neighbor(problem, start=start_city)
+    end_init_time = time.time()
+    
     packing_plan, profit = solve_kctsp_knapsack_exact(problem, tour)
-
+    end_kctsp_glouton_time = time.time()
+    f1.write("init time : " + str(end_init_time-star_init_time))
+    f1.write("gouton time : "+ str(end_kctsp_glouton_time-end_init_time))
+    f1.write("globale time : " + str(end_kctsp_glouton_time-star_init_time))
+    f2.write("profit : "+ str(profit))
     return {
         "tour": tour,
         "packing_plan": packing_plan,
@@ -54,8 +61,8 @@ if __name__ == "__main__":
 
     kw = 1.0/problem_tw.n  # coût par km et par kg (à choisir)
     problem_kc = problem_tw.as_kctsp(weight_cost_per_km=kw)
-    print("solve_kctsp_greedy", solve_kctsp_greedy(problem_kc))
-    #print("solve_kctsp_exact", solve_kctsp_exact(problem_kc))
+    #print("solve_kctsp_greedy", solve_kctsp_greedy(problem_kc))
+    print("solve_kctsp_exact", solve_kctsp_exact(problem_kc))
     
 
 
