@@ -12,13 +12,13 @@ class TWDTSPSolution:
     """
     
     def __init__(self, tour: List[int], 
-                 packing_plan: np.ndarray,  # Now a 2D binary array: [num_cities x max_items_per_city]
+                 packing_plan: np.ndarray,  # a 2D binary array: [num_cities x max_items_per_city]
                  total_profit: float,
                  total_weight: float, 
                  max_weight: float):
         
         self.tour = tour  # List of city indices representing the Hamiltonian cycle
-        self.packing_plan = packing_plan.astype(int)  # Binary array indicating which items are collected
+        self.packing_plan = packing_plan  # Binary array indicating which items are collected
         self.total_profit = total_profit
         self.total_weight = total_weight
         self.W = max_weight
@@ -59,14 +59,16 @@ class TWDTSPSolution:
         """
         return np.sum(self.packing_plan)
     
-    def get_collected_items(self) -> List[Tuple[int, int]]:
+    def get_collected_items(self, item_details) -> List[Tuple[int, int]]:
         """
         Get a list of all collected items as (city, item_index) tuples
         """
         collected = []
         cities, items = np.where(self.packing_plan == 1)
         for city, item_idx in zip(cities, items):
-            collected.append((int(city), int(item_idx)))
+            if city in item_details.keys():
+                profit, weight = item_details[city][int(item_idx)]
+                collected.append((int(city), int(item_idx), profit, weight))
         return collected
     
     def add_item(self, city: int, item_idx: int, item_profit: float, item_weight: float):
@@ -75,8 +77,8 @@ class TWDTSPSolution:
         """
         solution = copy.deepcopy(self)
         
-        if solution.packing_plan[city, item_idx] == 0:
-            solution.packing_plan[city, item_idx] = 1
+        if solution.packing_plan[city - 1, item_idx] == 0:
+            solution.packing_plan[city - 1, item_idx] = 1
             solution.total_profit += item_profit
             solution.total_weight += item_weight
         
@@ -285,7 +287,7 @@ if __name__ == "__main__":
     # Create solution
     solution = TWDTSPSolution(tour, packing_plan, total_profit, total_weight, max_weight)
     print(solution)
-    print(f"\nItems collected: {solution.get_collected_items()}")
+    print(f"\nItems collected: {solution.get_collected_items(items)}")
     
     print(f"\nTotal weight: {solution.total_weight:.2f}")
     print(f"Total profit: {solution.total_profit:.2f}")

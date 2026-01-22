@@ -1,4 +1,4 @@
-from instance import TWDTSP
+from instance import TWDTSP, TTPProblem
 
 from typing import Dict, List, Optional
 import numpy as np
@@ -17,7 +17,7 @@ class TWDTSPLoader:
     DEFAULT_CAPACITY_OF_KNAPSACK = 0
 
     @staticmethod
-    def load_from_file(filepath: str, populate: bool = False, db = None) -> 'TWDTSP':
+    def load_from_file(filepath: str, populate: bool = False, db = None, asTTP = False):
         """
         Load a TWDTSP problem from a TTP-format file
         
@@ -94,6 +94,8 @@ class TWDTSPLoader:
         renting_ratio = float(metadata.get('RENTING RATIO', TWDTSPLoader.DEFAULT_RENTING_RATIO))
         
         problem = TWDTSP(coords_array, items_dict, max_weight, edge_weight_type)
+        if asTTP:
+            problem = problem.as_ttp(min_speed, max_speed, renting_ratio)
         
         # Populate database if requested
         if populate:
